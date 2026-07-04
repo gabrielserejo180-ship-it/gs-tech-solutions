@@ -873,6 +873,36 @@
   const ctx = canvas.getContext('2d');
   let w, h, streaks;
 
+  // sprites pré-renderizados (uma vez só) — muito mais leve que redesenhar gradiente/blur a cada frame
+  const HUES = ['86,180,255', '140,225,255'];
+  function makeLineSprite(hue){
+    const c = document.createElement('canvas');
+    c.width = 8; c.height = 256;
+    const cctx = c.getContext('2d');
+    const grad = cctx.createLinearGradient(0,0,0,256);
+    grad.addColorStop(0, `rgba(${hue},0)`);
+    grad.addColorStop(0.5, `rgba(${hue},0.9)`);
+    grad.addColorStop(1, `rgba(${hue},0)`);
+    cctx.fillStyle = grad;
+    cctx.fillRect(0,0,8,256);
+    return c;
+  }
+  function makeOrbSprite(hue){
+    const size = 40;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const cctx = c.getContext('2d');
+    const grad = cctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+    grad.addColorStop(0, `rgba(${hue},0.95)`);
+    grad.addColorStop(0.35, `rgba(${hue},0.35)`);
+    grad.addColorStop(1, `rgba(${hue},0)`);
+    cctx.fillStyle = grad;
+    cctx.fillRect(0,0,size,size);
+    return c;
+  }
+  const lineSprites = HUES.map(makeLineSprite);
+  const orbSprites = HUES.map(makeOrbSprite);
+
   function resize(){
     w = canvas.width = window.innerWidth;
     h = canvas.height = window.innerHeight;
@@ -884,49 +914,38 @@
       y: randomY ? Math.random()*h - len : -len - Math.random()*300,
       len,
       speed: 0.5 + Math.random()*2.1,
-      width: Math.random() < 0.14 ? 2 : 1,
-      hue: Math.random() < 0.55 ? '86,180,255' : '140,225,255',
-      baseAlpha: 0.16 + Math.random()*0.28,
+      width: Math.random() < 0.14 ? 2.4 : 1.4,
+      hueIdx: Math.random() < 0.55 ? 0 : 1,
+      baseAlpha: 0.35 + Math.random()*0.5,
       hasOrb: Math.random() < 0.32,
       orbT: 0.25 + Math.random()*0.5
     };
   }
   function initStreaks(){
-    const count = Math.min(90, Math.max(28, Math.floor(w/26)));
+    const count = Math.min(60, Math.max(20, Math.floor(w/34)));
     streaks = Array.from({length: count}, () => spawnStreak(true));
   }
+  let running = true;
+  document.addEventListener('visibilitychange', () => {
+    running = !document.hidden;
+    if(running) requestAnimationFrame(draw);
+  });
   function draw(){
+    if(!running) return;
     ctx.clearRect(0,0,w,h);
     ctx.globalCompositeOperation = 'lighter';
     streaks.forEach(s => {
-      const grad = ctx.createLinearGradient(s.x, s.y, s.x, s.y + s.len);
-      grad.addColorStop(0, `rgba(${s.hue},0)`);
-      grad.addColorStop(0.55, `rgba(${s.hue},${s.baseAlpha})`);
-      grad.addColorStop(1, `rgba(${s.hue},0)`);
-      ctx.shadowBlur = 5;
-      ctx.shadowColor = `rgba(${s.hue},0.6)`;
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = s.width;
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(s.x, s.y + s.len);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.globalAlpha = s.baseAlpha;
+      ctx.drawImage(lineSprites[s.hueIdx], s.x - s.width*2, s.y, s.width*4, s.len);
       if(s.hasOrb){
         const oy = s.y + s.len * s.orbT;
-        const r = 3.4;
-        const orbGrad = ctx.createRadialGradient(s.x, oy, 0, s.x, oy, r*5.5);
-        orbGrad.addColorStop(0, `rgba(${s.hue},0.95)`);
-        orbGrad.addColorStop(0.35, `rgba(${s.hue},0.35)`);
-        orbGrad.addColorStop(1, `rgba(${s.hue},0)`);
-        ctx.fillStyle = orbGrad;
-        ctx.beginPath();
-        ctx.arc(s.x, oy, r*5.5, 0, Math.PI*2);
-        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.drawImage(orbSprites[s.hueIdx], s.x - 19, oy - 19, 38, 38);
       }
       s.y += s.speed;
       if(s.y > h){ Object.assign(s, spawnStreak(false)); }
     });
+    ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     if(!reduceMotion) requestAnimationFrame(draw);
   }
